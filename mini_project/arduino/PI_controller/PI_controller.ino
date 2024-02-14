@@ -3,6 +3,8 @@
 * Assignment: mini project
 * Description:
 */
+#include <Wire.h>
+
 #define M1A 2 // motor 1 encoder
 #define M2A 3 // motor 2 encoder
 #define ENABLE_PIN 4 // motor driver enable
@@ -12,12 +14,19 @@
 #define M2DIR 8 // motor 2 direction input (voltage sign)
 #define M1PWR 9 // motor 1 speed input (voltage)
 #define M2PWR 10 // motor 2 speed input (voltage)
+#define I2C_ADDR 11 // I2C address
 
+// I2C variables
+volatile uint8_t offset = 0;
+volatile uint8_t instruction[10] = {0};
+volatile uint8_t msgLength = 0;
+volatile uint8_t reply[10] = {0};
+// motor control variables
 const unsigned long desired_time_us = 10000; // desired sample time in us (10 ms)
 const float battery_voltage = 7.8; // motor power supply
 const float Kp = 2; // system gain
-const float Kp_pos = 1;
-const float Ki_pos = 1;
+float Kp_pos[2] = {5, 1.5};
+const float Ki_pos = 0.7;
 unsigned long last_time_us, start_time_us; // timer stuff
 float current_time_ms = 0; // more timer stuff
 bool finished = false; // for printing finished out to MatLab
@@ -69,6 +78,29 @@ long encoder(const int motor) {
   }
 }
 
+// function called when an I2C interrupt event happens
+void receive() {
+  // Set the offset, this will always be the first byte.
+  offset = Wire.read();
+  // If there is information after the offset, it is telling us more about the command.
+  msgLength = 0;
+  while (Wire.available()) {
+    instruction[msgLength] = Wire.read();
+    reply[msgLength] = instruction[msgLength];
+    msgLength++;
+  }
+}
+
+// function to request info from I2C
+void request() {
+  // According to the Wire source code, we must call write() within therequesting ISR
+  // and nowhere else. Otherwise, the timing does not work out. See line238:
+  // https://github.com/arduino/ArduinoCore-avr/blob/master/libraries/Wire/src/Wire.cpp
+  msgLength = 0;
+  
+  Wire.write(reply[msgLength]); 
+}
+
 void setup() {
   last_time_us = micros(); // timer setup
   start_time_us = last_time_us;
@@ -83,12 +115,37 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(M1A), motor_one_encoder_isr, CHANGE);
   attachInterrupt(digitalPinToInterrupt(M2A), motor_two_encoder_isr, CHANGE);
   Serial.begin(115200); // high baud rate to zoom
+  Wire.begin(I2C_ADDR);
+  Wire.onReceive(receive);
+  Wire.onRequest(request);
   Serial.println("Ready!"); // MatLab ready up
 }
 
 void loop() {
-  desired_pos_rad[0] = 3; // desired position for each wheel
-  desired_pos_rad[1] = 3;
+  // read desired position from I2C - 180 degrees is 3.14 radians AKA pi.
+  if (msgLength > 0) {
+    switch(instruction[0]) {
+      case 0:
+        desired_pos_rad[0] = 0;
+        desired_pos_rad[1] = 0;
+        break;
+      case 1:
+        desired_pos_rad[0] = 0;
+        desired_pos_rad[1] = PI;
+        break;
+      case 2:
+        desired_pos_rad[0] = PI;
+        desired_pos_rad[1] = PI;
+        break;
+      case 3:
+        desired_pos_rad[0] = PI;
+        desired_pos_rad[1] = 0;
+        break;  
+    }
+    msgLength = 0;
+  }
+//  desired_pos_rad[0] = PI; // desired position for each wheel
+//  desired_pos_rad[1] = PI;
 
   motor_counts_pos[0] = encoder(1); // get motor counts
   motor_counts_pos[1] = encoder(2);
@@ -105,7 +162,7 @@ void loop() {
   for (int i = 0; i < 2; i++) {
     pos_error[i] = desired_pos_rad[i] - actual_pos_rad[i];
     integral_error[i] = integral_error[i] + pos_error[i] * ((float)desired_time_us / 1000000);
-    desired_velocity_rad_s[i] = Kp_pos * pos_error[i] + Ki_pos * integral_error[i];
+    desired_velocity_rad_s[i] = Kp_pos[i] * pos_error[i] + Ki_pos * integral_error[i];
     error[i] = desired_velocity_rad_s[i] - actual_velocity_rad_s[i];
     voltage[i] = Kp * error[i];
   }
@@ -133,11 +190,19 @@ void loop() {
   Serial.print("\t");
   Serial.print(desired_pos_rad[0]);
   Serial.print("\t");
+  Serial.print(desired_pos_rad[1]);
+  Serial.print("\t");
   Serial.print(desired_velocity_rad_s[0]);
+  Serial.print("\t");
+  Serial.print(desired_velocity_rad_s[1]);
   Serial.print("\t");
   Serial.print(voltage[0]);
   Serial.print("\t");
-  Serial.println(actual_pos_rad[0]);
+  Serial.print(voltage[1]);
+  Serial.print("\t");
+  Serial.print(actual_pos_rad[0]);
+  Serial.print("\t");
+  Serial.println(actual_pos_rad[1]);
   
   /*if (!finished) {
   }
@@ -156,4 +221,24 @@ void loop() {
   last_time_us = micros(); // set comparison variables
   last_pos_rad[0] = actual_pos_rad[0];
   last_pos_rad[1] = actual_pos_rad[1];
+}
+
+//void loop() {
+//  // If there is data on the buffer, read it
+//  if (msgLength > 0) {
+//    if (offset==1) {
+//      digitalWrite(LED_BUILTIN,instruction[0]);
+//    }
+//  printReceived();
+//  msgLength = 0;
+//  }
+//}
+
+// printReceived helps us see what data we are getting from the leader
+void printReceived() {
+// Print on serial console
+  Serial.print("Instruction received: ");
+  for (int i=0;i<msgLength;i++) {
+    Serial.print(String(instruction[i])+"\t");
+  }
 }
