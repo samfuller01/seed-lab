@@ -39,9 +39,8 @@ command = 0;#stores quadrant markers is in
 #0-NE 1-NW 2-SW 3-SE
 while(True):
     ret, image = camera.read()
-    cv2.imshow('Image',image)
-    i2c.write_byte_data(ARD_ADDR,offset,command)
-    lcd.message = str(command)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) #convert image to grayscale
+    cv2.imshow('Image',gray)
     k = cv2.waitKey(1) & 0xFF
     #if key pressed exit loop
     if k == ord('q'):
@@ -51,6 +50,9 @@ while(True):
     corners,ids,rejected = aruco.detectMarkers(gray,aruco_dict)
     #if aruco detected print out id else print none found. 
     if not ids is None:
+        command = 1 #reads quadrant of markers in
+        i2c.write_byte_data(ARD_ADDR,offset,command)
+        lcd.message = str(command)
         
 camera.release()
 cv2.destroyAllWindows()
