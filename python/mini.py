@@ -5,6 +5,9 @@ from cv2 import aruco
 import board
 import adafruit_character_lcd.character_lcd_rgb_i2c as character_lcd
 from smbus2 import SMBus
+import threading
+import queue
+from random import random
 
 #initialize lcd
 lcd_columns = 16
@@ -22,11 +25,28 @@ aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_50)
 
 # initialize the camera. Channel 1 or 0. 
 camera = cv2.VideoCapture(0)
+# creates queue
+q = queue.Queue()
 
-#reduces size of frame making it easier to show image.
-#camera.set(cv2.CAP_PROP_FRAME_WIDTH,640)
-#camera.set(cv2.CAP_PROP_FRAME_HEIGHT,480)
-
+def createString(number):
+    string = "Goal Position: "
+    if number == 0:
+        string = string + "0 0"
+    elif number == 1:
+        string = string + "0 1"
+    elif number == 2:
+        string = string + "1 1"
+    elif number == 3:
+        string = string + "1 0"
+    q.put(string)
+    
+def display():
+    if not q.empty():
+        disp = str(q.get())
+        lcd.write = disp
+        
+myThread = threading.Thread(target=display,args=())
+myThread.start()
 # Let the camera warmup
 sleep(0.1)
 
@@ -50,12 +70,15 @@ while(True):
     corners,ids,rejected = aruco.detectMarkers(gray,aruco_dict)
     #if aruco detected print out id else print none found. 
     if not ids is None:
-        command = 1 #reads quadrant of markers in
+        command = 3 #reads quadrant of markers in
         i2c.write_byte_data(ARD_ADDR,offset,command)
-        lcd.message = str(command)
+        createString(command)
         
 camera.release()
 cv2.destroyAllWindows()
 lcd.color = [0,0,0]
 lcd.clear()
+
+
+    
 
