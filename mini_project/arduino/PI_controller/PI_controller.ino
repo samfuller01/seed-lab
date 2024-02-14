@@ -13,6 +13,9 @@
 #define M1PWR 9 // motor 1 speed input (voltage)
 #define M2PWR 10 // motor 2 speed input (voltage)
 
+// Integer value and corresponding quadrant
+// 0: NE, 1: NW, 2: SW, 3: SE
+
 const unsigned long desired_time_us = 10000; // desired sample time in us (10 ms)
 const float battery_voltage = 7.8; // motor power supply
 const float Kp = 2; // system gain
