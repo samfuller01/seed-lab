@@ -14,6 +14,7 @@
 #define M2DIR 8 // motor 2 direction input (voltage sign)
 #define M1PWR 9 // motor 1 speed input (voltage)
 #define M2PWR 10 // motor 2 speed input (voltage)
+<<<<<<< HEAD
 #define I2C_ADDR 11 // I2C address
 
 // I2C variables
@@ -22,6 +23,12 @@ volatile uint8_t instruction[10] = {0};
 volatile uint8_t msgLength = 0;
 volatile uint8_t reply[10] = {0};
 // motor control variables
+=======
+
+// Integer value and corresponding quadrant
+// 0: NE, 1: NW, 2: SW, 3: SE
+
+>>>>>>> 08390f117ad1e008a91f8fe5ba939e70638c90d5
 const unsigned long desired_time_us = 10000; // desired sample time in us (10 ms)
 const float battery_voltage = 7.8; // motor power supply
 const float Kp = 2; // system gain
@@ -222,6 +229,7 @@ void loop() {
   last_pos_rad[0] = actual_pos_rad[0];
   last_pos_rad[1] = actual_pos_rad[1];
 }
+<<<<<<< HEAD
 
 //void loop() {
 //  // If there is data on the buffer, read it
@@ -242,3 +250,5 @@ void printReceived() {
     Serial.print(String(instruction[i])+"\t");
   }
 }
+=======
+>>>>>>> 08390f117ad1e008a91f8fe5ba939e70638c90d5
