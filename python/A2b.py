@@ -11,9 +11,29 @@ The following performs the actions outlined by Assignment 2 part 2b.
 from time import sleep
 import numpy as np
 import cv2
+from smbus2 import SMBus
+import board
+import adafruit_character_lcd.character_lcd_rgb_i2c as character_lcd
 
 # initialize the camera. If channel 0 doesn't work, try channel 1
 camera = cv2.VideoCapture(1)
+
+#initialize lcd
+lcd_columns = 16
+lcd_rows = 2
+i2c = board.I2C()
+lcd = character_lcd.Character_LCD_RGB_I2C(i2c,lcd_columns,lcd_rows)
+lcd.clear()
+lcd.backlight = False
+lcd.color = [100,0,0]
+lcd.text_direction = lcd.LEFT_TO_RIGHT
+sleep(1)
+
+# I2C address of the Arduino, set in Arduino sketch
+ARD_ADDR = 8
+# Initialize SMBus library with I2C bus 1
+i2c = SMBus(1)
+
 # Let the camera warmup
 sleep(0.1)
 # Get an image from the camera stream
