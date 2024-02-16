@@ -21,16 +21,15 @@ volatile uint8_t offset = 0;
 volatile uint8_t instruction[10] = {0};
 volatile uint8_t msgLength = 0;
 volatile uint8_t reply[10] = {0};
-// motor control variables
-=======
 
 // Integer value and corresponding quadrant
 // 0: NE, 1: NW, 2: SW, 3: SE
 
+// motor control variables
 const unsigned long desired_time_us = 10000; // desired sample time in us (10 ms)
 const float battery_voltage = 7.8; // motor power supply
 const float Kp = 2; // system gain
-float Kp_pos[2] = {5, 1.5};
+float Kp_pos[2] = {5, 3.5};
 const float Ki_pos = 0.7;
 unsigned long last_time_us, start_time_us; // timer stuff
 float current_time_ms = 0; // more timer stuff
@@ -124,6 +123,7 @@ void setup() {
   Wire.onReceive(receive);
   Wire.onRequest(request);
   Serial.println("Ready!"); // MatLab ready up
+  delay(2000); // for testing motor rotation
 }
 
 void loop() {
@@ -149,8 +149,8 @@ void loop() {
     }
     msgLength = 0;
   }
-//  desired_pos_rad[0] = PI; // desired position for each wheel
-//  desired_pos_rad[1] = PI;
+  //desired_pos_rad[0] = PI; // desired position for each wheel
+  //desired_pos_rad[1] = PI;
 
   motor_counts_pos[0] = encoder(1); // get motor counts
   motor_counts_pos[1] = encoder(2);
@@ -227,7 +227,6 @@ void loop() {
   last_pos_rad[0] = actual_pos_rad[0];
   last_pos_rad[1] = actual_pos_rad[1];
 }
-<<<<<<< HEAD
 
 //void loop() {
 //  // If there is data on the buffer, read it
@@ -248,5 +247,3 @@ void printReceived() {
     Serial.print(String(instruction[i])+"\t");
   }
 }
-=======
->>>>>>> 08390f117ad1e008a91f8fe5ba939e70638c90d5
