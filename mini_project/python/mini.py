@@ -30,6 +30,9 @@ camera = cv2.VideoCapture(0)
 # creates queue
 q = queue.Queue()
 
+#The function createString takes in an integer denoting the position of the marker, 
+#and outputs a string of the goal position of the wheels, as well as printing out
+#the quadrant the marker is in. 
 def createString(number):
     string = "Goal Pos: "
     if number == 0:
@@ -47,6 +50,7 @@ def createString(number):
 
     return string
 
+#disp function prints a string to the LCD from the queue. Then clears the queue. 
 def disp():
     while True:
         if not q.empty():
@@ -63,22 +67,27 @@ ARD_ADDR = 11
 # Initialize SMBus library with I2C bus 1
 i2c = SMBus(1)
 offset = 1;
-command = 0;#stores quadrant markers is in
+command = 0;
+#stores quadrant markers is in
 #0-NE 1-NW 2-SW 3-SE
+
+#Sets up thread. 
 myThread = threading.Thread(target=disp,args=())
 myThread.start()
+#command is where quadrant information is stored 
 command = -1
 while(True):
     ret, image = camera.read()
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) #convert image to grayscale
     k = cv2.waitKey(1) & 0xFF
-    #if key pressed exit loop
+    #if q pressed exit loop
     if k == ord('q'):
         break
-    #creates array of XY coordinates for each corner of marker, an array of the 
+        
+    #creates array of XY coordinates for each corner of the marker, an array of the 
     #markers id and an array of each rejected canidate center of image. 
     corners,ids,rejected = aruco.detectMarkers(gray,aruco_dict)
-    #if aruco detected print out id else print none found.
+    
     height, width, channels = image.shape
     image = cv2.line(gray, (0,int(height/2)), (width, int(height/2)),(255,255,255),9)
     image = cv2.line(gray, (int(width/2),0), (int(width/2),height),(255,255,255),9)
@@ -98,7 +107,8 @@ while(True):
         yUp = centerY < absCenY
 
        
-        temp = command #stores previous command
+        temp = command #stores previous position
+        #reads the position of the marker and stores it in command. 
         if xLeft and yUp:
             command = 1
         elif (not xLeft) and yUp:
@@ -108,11 +118,12 @@ while(True):
         elif xLeft and (not yUp):
             command = 2
 
-    
+        #if the quadrant is changed then send the new quadrant info to the Arduino and update the queue
         if command != temp:    
             i2c.write_byte_data(ARD_ADDR,offset,command)
             q.put(command)
-        
+
+#closing the program 
 camera.release()
 cv2.destroyAllWindows()
 lcd.color = [0,0,0]
