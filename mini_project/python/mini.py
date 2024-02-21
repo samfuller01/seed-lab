@@ -77,6 +77,7 @@ myThread.start()
 #command is where quadrant information is stored 
 command = -1
 while(True):
+    #camer reads in the image
     ret, image = camera.read()
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) #convert image to grayscale
     k = cv2.waitKey(1) & 0xFF
@@ -87,34 +88,51 @@ while(True):
     #creates array of XY coordinates for each corner of the marker, an array of the 
     #markers id and an array of each rejected canidate center of image. 
     corners,ids,rejected = aruco.detectMarkers(gray,aruco_dict)
-    
+
+    #this takes the image dimensions and stores them in variables called height and width
     height, width, channels = image.shape
+    #these apply two gray lines to the grayscale image, putting these lines to distinguish quadrants
     image = cv2.line(gray, (0,int(height/2)), (width, int(height/2)),(255,255,255),9)
     image = cv2.line(gray, (int(width/2),0), (int(width/2),height),(255,255,255),9)
+
+    #this shows the image
     cv2.imshow('Image',gray)
+
+    #if an aruco marker is detected
     if not ids is None:
+        #this acquires the actual corner values returned from the tuple corner
         markerCorners = corners[0][0]
+
+        #this sets the sum of all x components and y components of the corners into a single sum to be averaged later
         centerX = markerCorners[0][0] + markerCorners[1][0] + markerCorners[2][0] + markerCorners[3][0]
         centerY = markerCorners[0][1] + markerCorners[1][1] + markerCorners[2][1] + markerCorners[3][1]
 
+        #this sets the center of the aruco marker by averaging the x and y components
         centerX /= 4
         centerY /= 4
 
+        #this stores a variable meaning absolute center of x or y, which align with the lines drawn to distinguish quadrants
         absCenX = width/2
         absCenY = height/2
 
+        #this creates booleans based on whether the aruco marker's center was left or above the crossing lines to identify which quadrant the aruco marker is in
         xLeft = centerX < absCenX
         yUp = centerY < absCenY
 
-       
+        
         temp = command #stores previous position
         #reads the position of the marker and stores it in command. 
+
+        #this if statement sets command to 1 if the aruco marker is in the upper left quadrant
         if xLeft and yUp:
             command = 1
+        #this elif statement sets command to 0 if the aruco marker is in the upper right quadrant
         elif (not xLeft) and yUp:
             command = 0
+        #this elif statement sets command to 3 if the aruco marker is in the bottom right quadrant
         elif (not xLeft) and (not yUp):
             command = 3
+        #this elif statement sets command to 2 if the aruco marker is in the bottom left quadrant
         elif xLeft and (not yUp):
             command = 2
 
