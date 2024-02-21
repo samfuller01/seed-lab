@@ -77,7 +77,7 @@ myThread.start()
 #command is where quadrant information is stored 
 command = -1
 while(True):
-    #camer reads in the image
+    #camera reads in the image
     ret, image = camera.read()
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) #convert image to grayscale
     k = cv2.waitKey(1) & 0xFF
