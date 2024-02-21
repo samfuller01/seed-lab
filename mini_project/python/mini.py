@@ -1,3 +1,6 @@
+#The program uses the webcam to detect a aruco marker. If there is an aruco marker then it detects what quadrant 
+#the marker is in. It sends the quadrant the aruco marker is in to the arduino. Additionally it prints to the 
+#LCD screen the position the wheels should be in, and prints to the command line the quadrant the marker is in. 
 from time import sleep
 import numpy as np
 import cv2
