@@ -1,12 +1,12 @@
-#define M1A 3 // motor 1 encoder
-#define M2A 2 // motor 2 encoder
+#define M1A 2 // motor 1 encoder
+#define M2A 3 // motor 2 encoder
 #define ENABLE_PIN 4 // motor driver enable
-#define M1B 6 // motor 1 encoder
-#define M2B 5 // motor 2 encoder
-#define M1DIR 8 // motor 1 direction input (voltage sign)
-#define M2DIR 7 // motor 2 direction input (voltage sign)
-#define M1PWR 10 // motor 1 speed input (voltage)
-#define M2PWR 9 // motor 2 speed input (voltage)
+#define M1B 5 // motor 1 encoder
+#define M2B 6 // motor 2 encoder
+#define M1DIR 7 // motor 1 direction input (voltage sign)
+#define M2DIR 8 // motor 2 direction input (voltage sign)
+#define M1PWR 9 // motor 1 speed input (voltage)
+#define M2PWR 10 // motor 2 speed input (voltage)
 #define RADIUS 0.237861
 #define MAX_VELOCITY_RAD_S 10
 
@@ -29,9 +29,11 @@ float desired_pos_rad[2] = {0, 0}; // desired position of wheel
 float actual_pos_rad[2] = {0, 0}; // current position in radians
 float desired_velocity_rad_s[2] = {0, 0}; // desired velocity in rad/s
 float actual_velocity_rad_s[2] = {0, 0}; // current velocity in rad/s
-float desired_angle_deg = 0;
 float desired_distance_feet = 0;
-float desired_distance_radians = 0;
+float desired_distance_rad = 0;
+float desired_angle_deg = 0;
+float desired_angle_rad = 0;
+float actual_angle_rad[2] = {0, 0}; // individual motor angle tracker
 unsigned int pwm[2] = {0, 0}; // PWM applied to motors
 
 // encoder ISR from assignment 1
@@ -89,7 +91,13 @@ void loop() {
   // 1 rotation of wheel is 3200 counts or 2 pi radians 0.2378 feet is radius
   // distance in feet divided by radius in feet gives us distance in radians
   desired_distance_feet = 5;
-  desired_distance_radians = -1 * desired_distance_feet / RADIUS; // positive is backwards...
+  desired_distance_radians = -1* desired_distance_feet / RADIUS; // positive is backwards...
+
+  // desired angle to turn
+//  desired_angle_deg = 45;
+//  desired_angle_rad = desired_angle_deg * PI/180;
+  
+  
   desired_pos_rad[0] = desired_distance_radians;
   desired_pos_rad[1] = desired_distance_radians;
   
