@@ -90,7 +90,7 @@ while(True):
         absCenY = height/2
         
         temp = angle
-        angle = .5*hf*(centerX-320)/320
+        angle = .5*hf*(centerX-width/2)/(width/2)
         if angle != temp:
             q.put(round(angle,4))
 	
