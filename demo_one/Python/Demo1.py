@@ -10,6 +10,8 @@ import adafruit_character_lcd.character_lcd_rgb_i2c as character_lcd
 from smbus2 import SMBus
 import threading
 import queue
+import glob
+import math
 
 #initialize lcd
 lcd_columns = 16
@@ -36,17 +38,18 @@ def disp():
         if not q.empty():
             gotSomething = q.get()
             q.queue.clear()
-            string = createString(gotSomething)
+            string = str(gotSomething)
             lcd.message = string
     
 # Let the camera warmup
 sleep(0.1)
-
-
-#Sets up thread. 
+#frame of view of the camera
+fov = 68.5
+hf = 57.154313995636249434982928784921329730700701401395403860031
+#sets up thread
 myThread = threading.Thread(target=disp,args=())
 myThread.start()
-
+angle = 0 
 while(True):
     #camera reads in the image
     ret, image = camera.read()
@@ -85,13 +88,15 @@ while(True):
         #this stores a variable meaning absolute center of x or y, which align with the lines drawn to distinguish quadrants
         absCenX = width/2
         absCenY = height/2
-
-        #this creates booleans based on whether the aruco marker's center was left or above the crossing lines to identify which quadrant the aruco marker is in
-        xLeft = centerX < absCenX
-        yUp = centerY < absCenY
+        
+        temp = angle
+        angle = .5*hf*(centerX-320)/320
+        if angle != temp:
+            q.put(round(angle,4))
+	
+    
 
         
-       
 #closing the program 
 camera.release()
 cv2.destroyAllWindows()
