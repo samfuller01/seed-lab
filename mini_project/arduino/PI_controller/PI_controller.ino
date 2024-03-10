@@ -143,6 +143,7 @@ void setup() {
   Wire.onReceive(receive);
   Wire.onRequest(request);
   Serial.println("Ready!"); // MatLab ready up
+  delay(3000);
 }
 
 void loop() {
@@ -168,6 +169,9 @@ void loop() {
     }
     msgLength = 0;
   }
+  
+  desired_pos_rad[0] = PI;
+  desired_pos_rad[1] = PI;
 
   motor_counts_pos[0] = encoder(1); // get motor counts
   motor_counts_pos[1] = encoder(2);
