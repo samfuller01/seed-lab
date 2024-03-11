@@ -23,11 +23,11 @@ sigma_r=10;
 %
 % left wheel parameters
 %
-K_l=1.1;
-sigma_l=13;
+K_l=1;
+sigma_l=10;
 
 phi_d=timeseries([0 0],[0 10]);
-rho_d=timeseries([0 0 6 6],[0 4.9 5 10]);
+rho_d=timeseries([0 0 2 2],[0 7 7 10]);
 
 out = sim('steeringsimulation.slx');
 figure(1)
