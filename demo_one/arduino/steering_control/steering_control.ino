@@ -19,11 +19,11 @@
 //float KI_PHI = 0.002; // rotation integral gain
 
 float KP_RHO_POS = 3;
-float KP_RHO = 2;
+float KP_RHO = 50;
 float KI_RHO = 0.05;
-float KP_PHI_POS = 30;
-float KP_PHI = 3;
-float KI_PHI = 0.01;
+float KP_PHI_POS = 330;
+float KP_PHI = 50;
+float KI_PHI = 0.05;
 
 unsigned long last_time_us, start_time_us;
 unsigned long last_read_time_motors_us[2] = {0, 0};
@@ -130,14 +130,14 @@ void loop() {
 
   // angle position & velocity controller - PI -> P -> V_delta
   pos_error[0] = phi_desired - phi_actual;
-  integral_error[0] = integral_error[0] + pos_error[0] * ((float)DESIRED_TIME_US / 1000000);
+  integral_error[0] = 0.5 * (integral_error[0] + pos_error[0]) * ((float)DESIRED_TIME_US / 1000000);
   phi_dot_desired = KP_PHI * pos_error[0] + KI_PHI * integral_error[0];
   error[0] = phi_dot_desired - phi_dot_actual;
   V_delta = error[0] * KP_PHI_POS;
 
   // distance position & velocity controller - PI -> P -> V_bar
   pos_error[1] = rho_desired - rho_actual;
-  integral_error[1] = integral_error[1] + pos_error[1] * ((float)DESIRED_TIME_US / 1000000);
+  integral_error[1] = 0.5 * (integral_error[1] + pos_error[1]) * ((float)DESIRED_TIME_US / 1000000);
   rho_dot_desired = KP_RHO * pos_error[1] + KI_RHO * integral_error[1];
   error[1] = rho_dot_desired - rho_dot_actual;
   V_bar = error[1] * KP_RHO_POS;
