@@ -11,11 +11,19 @@
 #define BATTERY_VOLTAGE 8 // voltage of motor power supply
 #define RADIUS 0.237861 // radius of wheel
 #define WHEEL_DISTANCE 1 // distance between each wheel
-#define KP 1.25 // overall voltage gain
-#define KP_RHO 2 // distance positional gain
-#define KI_RHO 0.2 // distance integral gain
-#define KP_PHI 3.5 // rotation positional gain
-#define KI_PHI 0.5 // rotation integral gain
+//float KP_RHO_POS = 1.5; // overall voltage gain
+//float KP_RHO = 2; // distance positional gain
+//float KI_RHO = 0.05; // distance integral gain
+//float KP_PHI_POS = 5;
+//float KP_PHI = 1.5; // rotation positional gain
+//float KI_PHI = 0.002; // rotation integral gain
+
+float KP_RHO_POS = 3;
+float KP_RHO = 2;
+float KI_RHO = 0.05;
+float KP_PHI_POS = 30;
+float KP_PHI = 3;
+float KI_PHI = 0.01;
 
 unsigned long last_time_us, start_time_us;
 unsigned long last_read_time_motors_us[2] = {0, 0};
@@ -37,7 +45,6 @@ float actual_pos_rad[2] = {0, 0}; // current position in radians
 float desired_velocity_rad_s[2] = {0, 0}; // desired velocity in rad/s
 float actual_velocity_rad_s[2] = {0, 0}; // current velocity in rad/s
 unsigned int pwm[2] = {0, 0}; // PWM applied to motors
-int diff_count = 0;
 
 // encoder ISR from assignment 1
 void motor_one_encoder_isr(void) {
@@ -91,8 +98,18 @@ void setup() {
 
 void loop() {
   current_time_ms = (float)(last_time_us - start_time_us) / 1000;
-  rho_desired = 6; // feet - positive is forwards
+  rho_desired = 7; // feet - positive is forwards
   phi_desired = 0; // degrees - positive is left
+//
+//  if (current_time_ms >= 5000) {
+//    rho_desired = 2.82;
+//    KP_RHO_POS = 3;
+//    KP_RHO = 2;
+//    KI_RHO = 0.05;
+//    KP_PHI_POS = 15;
+//    KP_PHI = 3;
+//    KI_PHI = 0.01;
+//  }
 
   phi_desired = phi_desired * PI / 180; // convert from degrees to radians
 
@@ -116,20 +133,38 @@ void loop() {
   integral_error[0] = integral_error[0] + pos_error[0] * ((float)DESIRED_TIME_US / 1000000);
   phi_dot_desired = KP_PHI * pos_error[0] + KI_PHI * integral_error[0];
   error[0] = phi_dot_desired - phi_dot_actual;
-  V_delta = error[0] * KP;
+  V_delta = error[0] * KP_PHI_POS;
 
   // distance position & velocity controller - PI -> P -> V_bar
   pos_error[1] = rho_desired - rho_actual;
   integral_error[1] = integral_error[1] + pos_error[1] * ((float)DESIRED_TIME_US / 1000000);
   rho_dot_desired = KP_RHO * pos_error[1] + KI_RHO * integral_error[1];
   error[1] = rho_dot_desired - rho_dot_actual;
-  V_bar = error[1] * KP;
+  V_bar = error[1] * KP_RHO_POS;
 
   voltage[0] = (V_bar + V_delta) / 2;
   voltage[1] = (V_bar - V_delta) / 2;
 
+
+//  } else if (theta_dot[1] > theta_dot[0]) {
+//    if (pwm[1] - 30 < 0) {
+//      pwm[1] = 0;
+//    } else {
+//      pwm[1] -= 30;
+//    }
+//  }
+
   pwm[0] = 255 * abs(voltage[0]) / BATTERY_VOLTAGE;
   pwm[1] = 255 * abs(voltage[1]) / BATTERY_VOLTAGE;
+
+  if (theta_dot[1] > theta_dot[0]) {
+    if ((int)pwm[1] - (10 * (theta_dot[0] - theta_dot[0])) < 0) {
+      pwm[1] = 0;
+    } else {
+      pwm[1] -= 10 * (theta_dot[1] - theta_dot[0]);
+    }
+  }
+
 
   if (voltage[0] > 0) {
     digitalWrite(M1DIR, LOW);
@@ -142,18 +177,6 @@ void loop() {
     digitalWrite(M2DIR, LOW);
   }
 
-  diff_count++;
-  if (diff_count == 5) {
-    float velocity_diff = theta_dot[0] - theta_dot[1];      
-    if (velocity_diff > 0) { // motor one going faster
-      pwm[1] += 60;
-    } else if (velocity_diff < 0) {
-      pwm[0] += 60;
-    }
-    diff_count = 0;
-  }
-
-
   Serial.print(current_time_ms / 1000);
   Serial.print("\t");
   Serial.print(theta[0]);
@@ -162,24 +185,24 @@ void loop() {
   Serial.print("\t");
   Serial.print(theta_dot[0]);
   Serial.print("\t");
-  Serial.println(theta_dot[1]);
-//  Serial.print("\t");
-//  Serial.print(rho_desired);
-//  Serial.print("\t");
-//  Serial.print(rho_actual);
-//  Serial.print("\t");
-//  Serial.print(rho_dot_desired);
-//  Serial.print("\t");
-//  Serial.print(rho_dot_actual);
-//  Serial.print("\t");
-//  Serial.print(theta_dot[1] - theta_dot[0]);
-//  Serial.print("\t");
-//  Serial.print(voltage[0]);
-//  Serial.print("\t");
-//  Serial.println(voltage[1]);
+  Serial.print(theta_dot[1]);
+  Serial.print("\t");
+  Serial.print(rho_desired);
+  Serial.print("\t");
+  Serial.print(rho_actual);
+  Serial.print("\t");
+  Serial.print(rho_dot_desired);
+  Serial.print("\t");
+  Serial.print(rho_dot_actual);
+  Serial.print("\t");
+  Serial.print(theta_dot[1] - theta_dot[0]);
+  Serial.print("\t");
+  Serial.print(voltage[0]);
+  Serial.print("\t");
+  Serial.println(voltage[1]);
   
-  analogWrite(M1PWR, min(pwm[0], 160));
-  analogWrite(M2PWR, min(pwm[1], 160));
+  analogWrite(M1PWR, min(pwm[0], ));
+  analogWrite(M2PWR, min(pwm[1], 50));
 
   while (micros() < last_time_us + DESIRED_TIME_US);
   last_time_us = micros();
