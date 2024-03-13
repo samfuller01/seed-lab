@@ -11,26 +11,22 @@
 #define BATTERY_VOLTAGE 8 // voltage of motor power supply
 #define RADIUS 0.237861 // radius of wheel
 #define WHEEL_DISTANCE 1 // distance between each wheel
-//float KP_RHO_POS = 1.5; // overall voltage gain
-//float KP_RHO = 2; // distance positional gain
-//float KI_RHO = 0.05; // distance integral gain
-//float KP_PHI_POS = 5;
-//float KP_PHI = 1.5; // rotation positional gain
-//float KI_PHI = 0.002; // rotation integral gain
 
-float KP_RHO_POS = 3;
-float KP_RHO = 50;
-float KI_RHO = 0.05;
-float KP_PHI_POS = 330;
-float KP_PHI = 50;
-float KI_PHI = 0.05;
+// gains of system
+float KP_RHO_POS = 3; // forward - 3
+float KP_RHO = 50; // forward - 50
+float KI_RHO = 0.09; // forward - .09 for 3/5 & .05 for 7 
+float KP_PHI_POS = 30; // forward - 330
+float KP_PHI = 3; // forward - 50
+float KI_PHI = 0.05; // forward - .05
 
-unsigned long last_time_us, start_time_us;
-unsigned long last_read_time_motors_us[2] = {0, 0};
-float current_time_ms = 0;
-float rho_desired, rho_actual, rho_dot_desired, rho_dot_actual;
-float phi_desired, phi_actual, phi_dot_desired, phi_dot_actual;
-float V_bar, V_delta;
+// global variables
+unsigned long last_time_us, start_time_us; // timing
+unsigned long last_read_time_motors_us[2] = {0, 0}; // last motor read time
+float current_time_ms = 0; // current time
+float rho_desired, rho_actual, rho_dot_desired, rho_dot_actual; // distance variables
+float phi_desired, phi_actual, phi_dot_desired, phi_dot_actual; // angle variables
+float V_bar, V_delta; // voltage variables
 long motor_counts_p[2] = {0, 0}; // private motor counts
 long motor_counts[2] = {0, 0};  // public motor counts to be calc'd with
 float theta[2] = {0, 0}; // rotational position
@@ -97,34 +93,25 @@ void setup() {
 }
 
 void loop() {
+  // 1 inch = 0.08333 feet
   current_time_ms = (float)(last_time_us - start_time_us) / 1000;
-  rho_desired = 7; // feet - positive is forwards
-  phi_desired = 0; // degrees - positive is left
-//
-//  if (current_time_ms >= 5000) {
-//    rho_desired = 2.82;
-//    KP_RHO_POS = 3;
-//    KP_RHO = 2;
-//    KI_RHO = 0.05;
-//    KP_PHI_POS = 15;
-//    KP_PHI = 3;
-//    KI_PHI = 0.01;
-//  }
-
+  rho_desired = 2; // feet - positive is forwards
+  phi_desired =  180; // degrees - positive is left
   phi_desired = phi_desired * PI / 180; // convert from degrees to radians
 
+  // get motor counts
   motor_counts[0] = encoder(1);
   motor_counts[1] = encoder(2);
-
+  // get position traveled
   theta[0] = 2 * PI * (float)motor_counts[0] / 3200;
   theta[1] = 2 * PI * (float)motor_counts[1] / 3200;
-
+  // calculate velocity of each motor
   theta_dot[0] = (theta[0] - last_theta[0]) / ((float)DESIRED_TIME_US / 1000000);
   theta_dot[1] = (theta[1] - last_theta[1]) / ((float)DESIRED_TIME_US / 1000000);
-
+  // actual positions and angles calculated
   rho_actual = RADIUS * (theta[0] + theta[1]) / 2;
   phi_actual = RADIUS * (theta[0] - theta[1]) / WHEEL_DISTANCE;
-
+  // actual velocities calculated
   rho_dot_actual = RADIUS * (theta_dot[0] + theta_dot[1]) / 2;
   phi_dot_actual = RADIUS * (theta_dot[0] - theta_dot[1]) / WHEEL_DISTANCE;
 
@@ -141,31 +128,13 @@ void loop() {
   rho_dot_desired = KP_RHO * pos_error[1] + KI_RHO * integral_error[1];
   error[1] = rho_dot_desired - rho_dot_actual;
   V_bar = error[1] * KP_RHO_POS;
-
+  // calculate voltage
   voltage[0] = (V_bar + V_delta) / 2;
   voltage[1] = (V_bar - V_delta) / 2;
-
-
-//  } else if (theta_dot[1] > theta_dot[0]) {
-//    if (pwm[1] - 30 < 0) {
-//      pwm[1] = 0;
-//    } else {
-//      pwm[1] -= 30;
-//    }
-//  }
-
+  // calculate PWM
   pwm[0] = 255 * abs(voltage[0]) / BATTERY_VOLTAGE;
   pwm[1] = 255 * abs(voltage[1]) / BATTERY_VOLTAGE;
-
-  if (theta_dot[1] > theta_dot[0]) {
-    if ((int)pwm[1] - (10 * (theta_dot[0] - theta_dot[0])) < 0) {
-      pwm[1] = 0;
-    } else {
-      pwm[1] -= 10 * (theta_dot[1] - theta_dot[0]);
-    }
-  }
-
-
+  // set motor direction
   if (voltage[0] > 0) {
     digitalWrite(M1DIR, LOW);
   } else {
@@ -176,34 +145,10 @@ void loop() {
   } else {
     digitalWrite(M2DIR, LOW);
   }
-
-  Serial.print(current_time_ms / 1000);
-  Serial.print("\t");
-  Serial.print(theta[0]);
-  Serial.print("\t");
-  Serial.print(theta[1]);
-  Serial.print("\t");
-  Serial.print(theta_dot[0]);
-  Serial.print("\t");
-  Serial.print(theta_dot[1]);
-  Serial.print("\t");
-  Serial.print(rho_desired);
-  Serial.print("\t");
-  Serial.print(rho_actual);
-  Serial.print("\t");
-  Serial.print(rho_dot_desired);
-  Serial.print("\t");
-  Serial.print(rho_dot_actual);
-  Serial.print("\t");
-  Serial.print(theta_dot[1] - theta_dot[0]);
-  Serial.print("\t");
-  Serial.print(voltage[0]);
-  Serial.print("\t");
-  Serial.println(voltage[1]);
-  
-  analogWrite(M1PWR, min(pwm[0], ));
-  analogWrite(M2PWR, min(pwm[1], 50));
-
+  // write power to motors
+  analogWrite(M1PWR, min(pwm[0], 100));
+  analogWrite(M2PWR, min(pwm[1], 100));
+  // sample time and previous runs variable assignment
   while (micros() < last_time_us + DESIRED_TIME_US);
   last_time_us = micros();
   last_theta[0] = theta[0];
