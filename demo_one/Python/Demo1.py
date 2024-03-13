@@ -1,6 +1,6 @@
-#The program uses the webcam to detect a aruco marker. If there is an aruco marker then it detects what quadrant 
-#the marker is in. It sends the quadrant the aruco marker is in to the arduino. Additionally it prints to the 
-#LCD screen the position the wheels should be in, and prints to the command line the quadrant the marker is in. 
+#The program uses the webcam to detect a aruco marker. If there is an aruco marker then it detects the angle 
+#the marker is from the center. It then displays this angle on the LCD screen. Each time the angles changes
+#the program will update the LCD screen with the new angle.
 from time import sleep
 import numpy as np
 import cv2
@@ -44,23 +44,15 @@ def disp():
 # Let the camera warmup
 sleep(0.1)
 #frame of view of the camera
-fov = 68.5
-#doc
-#hf = 57.154313995636249434982928784921329730700701401395403860031
-
-#hf = 50.13034854
 hf = 51.12615099
-#hf = 57.17715696989234
-#mine
-#hf = 60.470912986009985 
-#hf = 61.82019280143697
-#hf = 
-#sets up thread
-#hf = hf+2
-hf=hf+.6
+#fudge factor
+hf=hf+1.3
+#half field of view
 half = .5*hf
+#sets up thread
 myThread = threading.Thread(target=disp,args=())
 myThread.start()
+#initialize angle
 angle = 0 
 while(True):
     #camera reads in the image
@@ -77,8 +69,7 @@ while(True):
 
     #this takes the image dimensions and stores them in variables called height and width
     height, width, channels = image.shape
-    #these apply two gray lines to the grayscale image, putting these lines to distinguish quadrants
-    #image = cv2.line(gray, (0,int(height/2)), (width, int(height/2)),(255,255,255),9)
+    #applies a vertical line to center of camera
     image = cv2.line(gray, (int(width/2),0), (int(width/2),height),(255,255,255),2)
 
     #this shows the image
@@ -90,20 +81,20 @@ while(True):
         markerCorners = corners[0][0]
 
         #this sets the sum of all x components and y components of the corners into a single sum to be averaged later
-        #centerX = markerCorners[0][0] + markerCorners[1][0] + markerCorners[2][0] + markerCorners[3][0]
+        centerX = markerCorners[0][0] + markerCorners[1][0] + markerCorners[2][0] + markerCorners[3][0]
         centerY = markerCorners[0][1] + markerCorners[1][1] + markerCorners[2][1] + markerCorners[3][1]
-        centerX = markerCorners[1][0] + markerCorners[2][0] 
         #this sets the center of the aruco marker by averaging the x and y components
-        #centerX /= 4
-        centerX /= 2
+        centerX /= 4
         centerY /= 4
 
         #this stores a variable meaning absolute center of x or y, which align with the lines drawn to distinguish quadrants
         absCenX = width/2
         absCenY = height/2
-        
+        #stores previous angle
         temp = angle
+        #calculation for angle
         angle = half*(centerX-320)/(320)
+        #if angle changed update lcd
         if angle != temp:
             q.put(round(angle,4))
 	
@@ -112,7 +103,6 @@ while(True):
         
 #closing the program 
 camera.release()
-
 cv2.destroyAllWindows()
 lcd.color = [0,0,0]
 lcd.clear()
