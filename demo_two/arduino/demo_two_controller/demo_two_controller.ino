@@ -20,7 +20,7 @@
 volatile uint8_t offset = 0;
 volatile uint8_t instruction[1] = {0};
 volatile uint8_t msgLength = 0;
-volatile uint8_t reply[10] = {0};
+volatile uint8_t reply[1] = {0};
 
 // gains of system
 float KP_RHO_POS = 3; // forward - 3
@@ -139,12 +139,26 @@ void setup() {
 
 void loop() {
   if (msgLength > 0) { // read from I2C
+    switch (instruction[0]) {
+      case 1: // marker detection
+        phi_desired = phi_actual; // stop robot
+        reply[0] = 1; // robot stopped signal
+        break;
+      default: // final angle adjustment
+        phi_desired = phi_desired + instruction[0];
+        reply[0] = 2; // set correct angle signal
+        break;
+    }
+    // 1 - stop spinning
+    // otherwise read for angle to point straight at marker
     msgLength = 0;
   }
   // 1 inch = 0.08333 feet
   current_time_ms = (float)(last_time_us - start_time_us) / 1000;
-  rho_desired = 2; // feet - positive is forwards
-  phi_desired =  180; // degrees - positive is left
+  rho_desired = 0; // feet - positive is forwards
+  phi_desired =  0; // degrees - positive is left
+  // finding camera code 
+  if (current_time_ms > )
   phi_desired = phi_desired * PI / 180; // convert from degrees to radians
 
   // get motor counts
