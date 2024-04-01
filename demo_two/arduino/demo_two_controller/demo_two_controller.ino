@@ -17,15 +17,18 @@
 
 // I2C variables
 
-volatile uint8_t offset = 0;
-volatile uint8_t instruction[1] = {0};
+volatile int8_t offset = 0;
+volatile int8_t instruction[1] = {0};
 volatile uint8_t msgLength = 0;
 volatile uint8_t reply[1] = {0};
+
+float motor_one_max_voltage[2] = {5, -5};
+float motor_two_max_voltage[2] = {5, -5};
 
 // gains of system
 float KP_RHO_POS = 3; // forward - 3
 float KP_RHO = 50; // forward - 50
-float KI_RHO = 0.09; // forward - .09 for 3/5 & .05 for 7 
+float KI_RHO = 0.05; // forward - .09 for 3/5 & .05 for 7 
 float KP_PHI_POS = 30; // forward - 330
 float KP_PHI = 3; // forward - 50
 float KI_PHI = 0.05; // forward - .05
@@ -37,6 +40,7 @@ float current_time_ms = 0; // current time
 float rho_desired, rho_actual, rho_dot_desired, rho_dot_actual; // distance variables
 float phi_desired, phi_actual, phi_dot_desired, phi_dot_actual; // angle variables
 float V_bar, V_delta; // voltage variables
+float count_diff, combined_count_diff, last_count_diff; // comparing counts to keep motor speeds together
 long motor_counts_p[2] = {0, 0}; // private motor counts
 long motor_counts[2] = {0, 0};  // public motor counts to be calc'd with
 float theta[2] = {0, 0}; // rotational position
@@ -51,6 +55,8 @@ float actual_pos_rad[2] = {0, 0}; // current position in radians
 float desired_velocity_rad_s[2] = {0, 0}; // desired velocity in rad/s
 float actual_velocity_rad_s[2] = {0, 0}; // current velocity in rad/s
 unsigned int pwm[2] = {0, 0}; // PWM applied to motors
+bool marker_found = false; // global flag for if aruco marker is found by camera team
+float current_time_copy = 0;
 
 // encoder ISR from assignment 1
 void motor_one_encoder_isr(void) {
@@ -109,14 +115,6 @@ void request(void) {
   Wire.write(reply[msgLength]); 
 }
 
-void printReceived(void) {
-// Print on serial console
-  Serial.print("Instruction received: ");
-  for (int i=0;i<msgLength;i++) {
-    Serial.print(String(instruction[i])+"\t");
-  }
-}
-
 void setup() {
   last_time_us = micros(); // timer setup
   start_time_us = last_time_us;
@@ -135,35 +133,65 @@ void setup() {
   Wire.onReceive(receive);
   Wire.onRequest(request);
   Serial.begin(115200); // high baud rate to zoom
+  rho_desired = 0;
+  phi_desired = 0;
 }
 
 void loop() {
-  if (msgLength > 0) { // read from I2C
-    switch (instruction[0]) {
-      case 1: // marker detection
-        phi_desired = phi_actual; // stop robot
-        reply[0] = 1; // robot stopped signal
-        break;
-      default: // final angle adjustment
-        phi_desired = phi_desired + instruction[0];
-        reply[0] = 2; // set correct angle signal
-        break;
-    }
-    // 1 - stop spinning
-    // otherwise read for angle to point straight at marker
-    msgLength = 0;
-  }
   // 1 inch = 0.08333 feet
   current_time_ms = (float)(last_time_us - start_time_us) / 1000;
-  rho_desired = 0; // feet - positive is forwards
-  phi_desired =  0; // degrees - positive is left
-  // finding camera code 
-  if (current_time_ms > )
+  //rho_desired = 0; // feet - positive is forwards
+  //phi_desired =  0; // degrees - positive is left
+  // demo 2 part 1 code
+  // if (msgLength > 0) { // read from I2C
+  //   if (marker_found) {
+  //     if (int(instruction[0]) > 200) { // integer overflow things
+  //       phi_desired = phi_desired + (int(instruction[0]) - 256);
+  //     } else {
+  //       phi_desired = phi_desired + int(instruction[0]);
+  //     }
+  //     rho_desired = 6.5;
+  //   } else {
+  //     phi_desired = phi_actual;
+  //     reply[0] = 1;
+  //     marker_found = true;
+  //   }
+  //   msgLength = 0;
+  // }
+  Serial.println(phi_desired);
+  // finding camera code, every 3 seconds turn 20 degrees more if marker hasn't been found
+  if (current_time_ms - current_time_copy >= 3000 && !marker_found) {
+    Serial.println("Been 3 seconds, angle increased by 20 degrees");
+    phi_desired = phi_desired + 20;
+    Serial.println(phi_desired);
+    current_time_copy = current_time_ms;
+  }
   phi_desired = phi_desired * PI / 180; // convert from degrees to radians
 
   // get motor counts
   motor_counts[0] = encoder(1);
   motor_counts[1] = encoder(2);
+
+  // count_diff = abs(motor_counts[1]) - abs(motor_counts[0]);
+  // combined_count_diff = count_diff - last_count_diff;
+  // last_count_diff = count_diff;
+  // if (combined_count_diff > 0) { // if motor 2 going faster
+  //   motor_one_max_voltage[0] = 5;
+  //   motor_one_max_voltage[1] = -5;
+  //   motor_two_max_voltage[0] = 2;
+  //   motor_two_max_voltage[1] = -2;
+  // } else if (combined_count_diff == 0) {
+  //   motor_one_max_voltage[0] = 5;
+  //   motor_one_max_voltage[1] = -5;
+  //   motor_two_max_voltage[0] = 5;
+  //   motor_two_max_voltage[1] = -5;
+  // } else { // if motor 1 is going faster
+  //   motor_one_max_voltage[0] = 2;
+  //   motor_one_max_voltage[1] = -2;
+  //   motor_two_max_voltage[0] = 5;
+  //   motor_two_max_voltage[1] = -5;
+  // }
+  
   // get position traveled
   theta[0] = 2 * PI * (float)motor_counts[0] / 3200;
   theta[1] = 2 * PI * (float)motor_counts[1] / 3200;
@@ -193,6 +221,18 @@ void loop() {
   // calculate voltage
   voltage[0] = (V_bar + V_delta) / 2;
   voltage[1] = (V_bar - V_delta) / 2;
+
+  // setting max voltages
+  // if (voltage[0] < 0) {
+  //   voltage[0] = max(voltage[0], motor_one_max_voltage[1]);
+  // } else {
+  //   voltage[0] = min(voltage[0], motor_one_max_voltage[0]);
+  // }
+  // if (voltage[1] < 0) {
+  //   voltage[1] = max(voltage[1], motor_two_max_voltage[1]);
+  // } else {
+  //   voltage[1] = min(voltage[1], motor_two_max_voltage[0]);
+  // }
   // calculate PWM
   pwm[0] = 255 * abs(voltage[0]) / BATTERY_VOLTAGE;
   pwm[1] = 255 * abs(voltage[1]) / BATTERY_VOLTAGE;
@@ -208,8 +248,8 @@ void loop() {
     digitalWrite(M2DIR, LOW);
   }
   // write power to motors
-  analogWrite(M1PWR, min(pwm[0], 100));
-  analogWrite(M2PWR, min(pwm[1], 100));
+  analogWrite(M1PWR, min(pwm[0], 255));
+  analogWrite(M2PWR, min(pwm[1], 255));
   // sample time and previous runs variable assignment
   while (micros() < last_time_us + DESIRED_TIME_US);
   last_time_us = micros();
