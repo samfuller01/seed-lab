@@ -38,7 +38,7 @@ unsigned long last_time_us, start_time_us; // timing
 unsigned long last_read_time_motors_us[2] = {0, 0}; // last motor read time
 float current_time_ms = 0; // current time
 float rho_desired, rho_actual, rho_dot_desired, rho_dot_actual; // distance variables
-float phi_desired, phi_actual, phi_dot_desired, phi_dot_actual; // angle variables
+float phi_desired, phi_actual, phi_dot_desired, phi_dot_actual, phi_desired_degrees; // angle variables
 float V_bar, V_delta; // voltage variables
 float count_diff, combined_count_diff, last_count_diff; // comparing counts to keep motor speeds together
 long motor_counts_p[2] = {0, 0}; // private motor counts
@@ -56,6 +56,8 @@ float desired_velocity_rad_s[2] = {0, 0}; // desired velocity in rad/s
 float actual_velocity_rad_s[2] = {0, 0}; // current velocity in rad/s
 unsigned int pwm[2] = {0, 0}; // PWM applied to motors
 bool marker_found = false; // global flag for if aruco marker is found by camera team
+bool start_turning = false;
+bool reset_done = false;
 float current_time_copy = 0;
 
 // encoder ISR from assignment 1
@@ -90,6 +92,13 @@ long encoder(const int motor) {
     if (digitalRead(M2A) != digitalRead(M2B)) return (motor_counts_p[1] + 1);
     else return motor_counts_p[1];
   }
+}
+
+void reset(void) {
+  motor_counts_p[0] = 0;
+  motor_counts_p[1] = 0;
+  phi_desired_degrees = 0;
+  phi_actual = 0;
 }
 
 /******** I2C Helper Functions ********/
@@ -135,6 +144,7 @@ void setup() {
   Serial.begin(115200); // high baud rate to zoom
   rho_desired = 0;
   phi_desired = 0;
+  phi_desired_degrees = 0;
 }
 
 void loop() {
@@ -143,54 +153,67 @@ void loop() {
   //rho_desired = 0; // feet - positive is forwards
   //phi_desired =  0; // degrees - positive is left
   // demo 2 part 1 code
-  // if (msgLength > 0) { // read from I2C
-  //   if (marker_found) {
-  //     if (int(instruction[0]) > 200) { // integer overflow things
-  //       phi_desired = phi_desired + (int(instruction[0]) - 256);
-  //     } else {
-  //       phi_desired = phi_desired + int(instruction[0]);
-  //     }
-  //     rho_desired = 6.5;
-  //   } else {
-  //     phi_desired = phi_actual;
-  //     reply[0] = 1;
-  //     marker_found = true;
-  //   }
-  //   msgLength = 0;
-  // }
-  Serial.println(phi_desired);
+  if (msgLength > 0) { // read from I2C
+    if (instruction[0] == 100) {
+      start_turning = true;
+    } else if (instruction[0] == 50) {
+      start_turning = false;
+      reply[0] = 1;
+    } else {
+      reset();
+      marker_found = true;
+      if (instruction[0] > 200) {
+        phi_desired_degrees = (instruction[0] - 256);
+        phi_desired = phi_desired_degrees * PI / 180;
+      } else {
+        phi_desired_degrees = instruction[0];
+        phi_desired = phi_desired_degrees * PI / 180;
+      }
+    }
+    msgLength = 0;
+  }
+
+  if (marker_found && (phi_desired - phi_actual < 0.02)) {
+    if (!reset_done) {
+      reset();
+    }
+    rho_desired = 6.25;
+    reset_done = true;
+  }
+
   // finding camera code, every 3 seconds turn 20 degrees more if marker hasn't been found
-  if (current_time_ms - current_time_copy >= 3000 && !marker_found) {
-    Serial.println("Been 3 seconds, angle increased by 20 degrees");
-    phi_desired = phi_desired + 20;
-    Serial.println(phi_desired);
+  if (current_time_ms - current_time_copy >= 3000 && !marker_found && start_turning) {
+    phi_desired_degrees += 40;
     current_time_copy = current_time_ms;
   }
-  phi_desired = phi_desired * PI / 180; // convert from degrees to radians
+  phi_desired = phi_desired_degrees * PI / 180; // convert from degrees to radians
+
+  Serial.print(current_time_ms);
+  Serial.print("\t");
+  Serial.print(phi_desired_degrees);
+  Serial.print("\t");
+  Serial.print(phi_actual);
+  Serial.print("\t");
+  Serial.println(phi_desired);
 
   // get motor counts
   motor_counts[0] = encoder(1);
   motor_counts[1] = encoder(2);
 
-  // count_diff = abs(motor_counts[1]) - abs(motor_counts[0]);
-  // combined_count_diff = count_diff - last_count_diff;
-  // last_count_diff = count_diff;
-  // if (combined_count_diff > 0) { // if motor 2 going faster
-  //   motor_one_max_voltage[0] = 5;
-  //   motor_one_max_voltage[1] = -5;
-  //   motor_two_max_voltage[0] = 2;
-  //   motor_two_max_voltage[1] = -2;
-  // } else if (combined_count_diff == 0) {
-  //   motor_one_max_voltage[0] = 5;
-  //   motor_one_max_voltage[1] = -5;
-  //   motor_two_max_voltage[0] = 5;
-  //   motor_two_max_voltage[1] = -5;
-  // } else { // if motor 1 is going faster
-  //   motor_one_max_voltage[0] = 2;
-  //   motor_one_max_voltage[1] = -2;
-  //   motor_two_max_voltage[0] = 5;
-  //   motor_two_max_voltage[1] = -5;
-  // }
+  count_diff = abs(motor_counts[1]) - abs(motor_counts[0]);
+  combined_count_diff = count_diff - last_count_diff;
+  last_count_diff = count_diff;
+  if (combined_count_diff > 0) { // if motor 2 going faster
+    motor_one_max_voltage[0] = 5;
+    motor_one_max_voltage[1] = -5;
+    motor_two_max_voltage[0] = 1.75;
+    motor_two_max_voltage[1] = -1.75;
+  } else { // if motor 1 is going faster
+    motor_one_max_voltage[0] = 2;
+    motor_one_max_voltage[1] = -2;
+    motor_two_max_voltage[0] = 4.5;
+    motor_two_max_voltage[1] = -4.5;
+  }
   
   // get position traveled
   theta[0] = 2 * PI * (float)motor_counts[0] / 3200;
@@ -222,17 +245,17 @@ void loop() {
   voltage[0] = (V_bar + V_delta) / 2;
   voltage[1] = (V_bar - V_delta) / 2;
 
-  // setting max voltages
-  // if (voltage[0] < 0) {
-  //   voltage[0] = max(voltage[0], motor_one_max_voltage[1]);
-  // } else {
-  //   voltage[0] = min(voltage[0], motor_one_max_voltage[0]);
-  // }
-  // if (voltage[1] < 0) {
-  //   voltage[1] = max(voltage[1], motor_two_max_voltage[1]);
-  // } else {
-  //   voltage[1] = min(voltage[1], motor_two_max_voltage[0]);
-  // }
+  //setting max voltages
+  if (voltage[0] < 0) {
+    voltage[0] = max(voltage[0], motor_one_max_voltage[1]);
+  } else {
+    voltage[0] = min(voltage[0], motor_one_max_voltage[0]);
+  }
+  if (voltage[1] < 0) {
+    voltage[1] = max(voltage[1], motor_two_max_voltage[1]);
+  } else {
+    voltage[1] = min(voltage[1], motor_two_max_voltage[0]);
+  }
   // calculate PWM
   pwm[0] = 255 * abs(voltage[0]) / BATTERY_VOLTAGE;
   pwm[1] = 255 * abs(voltage[1]) / BATTERY_VOLTAGE;
