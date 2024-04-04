@@ -148,8 +148,8 @@ void setup() {
 }
 
 void loop() {
-  // 1 inch = 0.08333 feet
   current_time_ms = (float)(last_time_us - start_time_us) / 1000;
+  // 1 inch = 0.08333 feet
   //rho_desired = 0; // feet - positive is forwards
   //phi_desired =  0; // degrees - positive is left
   // demo 2 part 1 code
@@ -158,7 +158,7 @@ void loop() {
       start_turning = true;
     } else if (instruction[0] == 50) {
       start_turning = false;
-      reply[0] = 1;
+      reply[0] = 1; // when arduino requests info this is what is sent back
     } else {
       reset();
       marker_found = true;
