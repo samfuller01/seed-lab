@@ -1,6 +1,6 @@
 #The program uses the webcam to detect a aruco marker. If there is an aruco marker then it detects the angle 
 #the marker is from the center. It then displays this angle on the LCD screen. Each time the angles changes
-#the program will update the LCD screen with the new angle.
+#the program will update the LCD screen with the new angle. After detecting a marker we send the angle to the ardiuno. 
 from time import sleep
 import numpy as np
 import cv2
