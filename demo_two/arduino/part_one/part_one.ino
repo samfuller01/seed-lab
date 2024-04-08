@@ -1,3 +1,7 @@
+/*
+Demo Two Part One Code
+Desc: Code makes bot wait for I2C communication and get within 1 foot of marker.
+*/
 #include <Wire.h>
 
 #define M1A 2 // motor 1 encoder
@@ -16,12 +20,12 @@
 #define I2C_ADDR 11 // I2C address
 
 // I2C variables
-
 volatile int8_t offset = 0;
 volatile int8_t instruction[1] = {0};
 volatile uint8_t msgLength = 0;
 volatile uint8_t reply[1] = {0};
 
+// motor voltage controller variables
 float motor_one_max_voltage[2] = {5, -5};
 float motor_two_max_voltage[2] = {5, -5};
 
@@ -56,9 +60,9 @@ float desired_velocity_rad_s[2] = {0, 0}; // desired velocity in rad/s
 float actual_velocity_rad_s[2] = {0, 0}; // current velocity in rad/s
 unsigned int pwm[2] = {0, 0}; // PWM applied to motors
 bool marker_found = false; // global flag for if aruco marker is found by camera team
-bool start_turning = false;
-bool reset_done = false;
-float current_time_copy = 0;
+bool start_turning = false; // global flag for if robot should start searching for marker
+bool reset_done = false; // global flag for if reset is done
+float current_time_copy = 0; // mirror of current time for comparison reasons
 
 // encoder ISR from assignment 1
 void motor_one_encoder_isr(void) {
@@ -94,6 +98,7 @@ long encoder(const int motor) {
   }
 }
 
+// reset variables to track distances for different parts correctly
 void reset(void) {
   motor_counts_p[0] = 0;
   motor_counts_p[1] = 0;
@@ -150,10 +155,8 @@ void setup() {
 void loop() {
   current_time_ms = (float)(last_time_us - start_time_us) / 1000;
   // 1 inch = 0.08333 feet
-  //rho_desired = 0; // feet - positive is forwards
-  //phi_desired =  0; // degrees - positive is left
-  // demo 2 part 1 code
-  if (msgLength > 0) { // read from I2C
+  // I2C communication
+  if (msgLength > 0) {
     if (instruction[0] == 100) {
       start_turning = true;
     } else if (instruction[0] == 50) {
@@ -173,6 +176,7 @@ void loop() {
     msgLength = 0;
   }
 
+  // once marker found go to marker
   if (marker_found && (phi_desired - phi_actual < 0.02)) {
     if (!reset_done) {
       reset();
@@ -188,18 +192,11 @@ void loop() {
   }
   phi_desired = phi_desired_degrees * PI / 180; // convert from degrees to radians
 
-  Serial.print(current_time_ms);
-  Serial.print("\t");
-  Serial.print(phi_desired_degrees);
-  Serial.print("\t");
-  Serial.print(phi_actual);
-  Serial.print("\t");
-  Serial.println(phi_desired);
-
   // get motor counts
   motor_counts[0] = encoder(1);
   motor_counts[1] = encoder(2);
 
+  // motor voltage controller
   count_diff = abs(motor_counts[1]) - abs(motor_counts[0]);
   combined_count_diff = count_diff - last_count_diff;
   last_count_diff = count_diff;

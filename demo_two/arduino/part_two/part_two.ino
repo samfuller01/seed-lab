@@ -1,3 +1,7 @@
+/*
+Demo Two Part Two Code
+Desc: This is the code that makes the robot go around the marker in a circle after getting within 1 foot
+*/
 #include <Wire.h>
 
 #define M1A 2 // motor 1 encoder
@@ -16,12 +20,12 @@
 #define I2C_ADDR 11 // I2C address
 
 // I2C variables
-
 volatile int8_t offset = 0;
 volatile int8_t instruction[1] = {0};
 volatile uint8_t msgLength = 0;
 volatile uint8_t reply[1] = {0};
 
+// motor voltage controller variables
 float motor_one_max_voltage[2] = {5, -5};
 float motor_two_max_voltage[2] = {5, -5};
 
@@ -56,10 +60,10 @@ float desired_velocity_rad_s[2] = {0, 0}; // desired velocity in rad/s
 float actual_velocity_rad_s[2] = {0, 0}; // current velocity in rad/s
 unsigned int pwm[2] = {0, 0}; // PWM applied to motors
 bool marker_found = false; // global flag for if aruco marker is found by camera team
-bool start_turning = false;
-bool reset_done = false;
-bool finished = false;
-float current_time_copy = 0;
+bool start_turning = false; // global flag for if robot should start searching for marker
+bool reset_done = false; // global flag to reset in order to go forward to marker
+bool finished = false; // global flag to check if robot has finished going in circle
+float current_time_copy = 0; // mirror of current time to compare against
 
 // encoder ISR from assignment 1
 void motor_one_encoder_isr(void) {
@@ -95,6 +99,7 @@ long encoder(const int motor) {
   }
 }
 
+// reseting distances for accurate travel
 void reset(void) {
   motor_counts_p[0] = 0;
   motor_counts_p[1] = 0;
@@ -129,6 +134,7 @@ void request(void) {
   Wire.write(reply[msgLength]); 
 }
 
+// function to make robot turn desired angle in degrees
 void turn(const float angle) {
   reset();
   phi_desired_degrees = angle;
@@ -224,6 +230,7 @@ void turn(const float angle) {
   }
 }
 
+// function to make robot go around marker in circle with radius of 1 foot
 void go_in_circle(void) {
   reset();
   while (true) {
@@ -325,12 +332,6 @@ void go_in_circle(void) {
   }
 }
 
-void circle(const float radius) {
-  reset();
-  while (true) {
-  }
-}
-
 void setup() {
   last_time_us = micros(); // timer setup
   start_time_us = last_time_us;
@@ -360,7 +361,7 @@ void loop() {
   // feet - positive is forwards
   // degrees - positive is left
   // I2C reading code
-  if (msgLength > 0 && !finished) { // read from I2C
+  if (msgLength > 0 && !finished) {
     if (instruction[0] == 100) {
       start_turning = true;
     } else if (instruction[0] == 50) {
@@ -379,6 +380,7 @@ void loop() {
     }
     msgLength = 0;
   }
+
   // travel to marker code
   if (marker_found && (phi_desired - phi_actual < 0.02) && !finished) {
     if (!reset_done) {
@@ -410,6 +412,7 @@ void loop() {
   motor_counts[0] = encoder(1);
   motor_counts[1] = encoder(2);
 
+  // motor voltage controller
   count_diff = abs(motor_counts[1]) - abs(motor_counts[0]);
   combined_count_diff = count_diff - last_count_diff;
   last_count_diff = count_diff;
