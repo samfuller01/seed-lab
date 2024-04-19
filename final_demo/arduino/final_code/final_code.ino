@@ -18,10 +18,8 @@ Desc: This is the code that makes the robot complete the final demo.
 #define RADIUS 0.237861 // radius of wheel
 #define WHEEL_DISTANCE 0.979 // distance between each wheel
 #define ARD_ADDR 11 // I2C address for arduino
-#define PI_ADDR 1 // I2C address for pi
 
 // I2C variables
-volatile int8_t offset = 0;
 volatile int8_t instruction[1] = {0};
 volatile uint8_t msgLength = 0;
 volatile uint8_t reply[1] = {0};
@@ -42,6 +40,7 @@ float KI_PHI = 0.05; // forward - .05
 unsigned long last_time_us, start_time_us; // timing
 unsigned long last_read_time_motors_us[2] = {0, 0}; // last motor read time
 float current_time_ms = 0; // current time
+float current_time_copy = 0; // copy of current time for comparison purposes
 float rho_desired, rho_actual, rho_dot_desired, rho_dot_actual; // distance variables
 float phi_desired, phi_actual, phi_dot_desired, phi_dot_actual, phi_desired_degrees; // angle variables
 float V_bar, V_delta; // voltage variables
@@ -60,12 +59,7 @@ float actual_pos_rad[2] = {0, 0}; // current position in radians
 float desired_velocity_rad_s[2] = {0, 0}; // desired velocity in rad/s
 float actual_velocity_rad_s[2] = {0, 0}; // current velocity in rad/s
 unsigned int pwm[2] = {0, 0}; // PWM applied to motors
-bool marker_found = false; // global flag for if aruco marker is found by camera team
-bool start_turning = false; // global flag for if robot should start searching for marker
-bool reset_done = false; // global flag to reset in order to go forward to marker
-bool finished = false; // global flag to check if robot has finished going in circle
-bool get_angle = false;
-float current_time_copy = 0; // mirror of current time to compare against
+int previous_message = 0;
 
 // encoder ISR from assignment 1
 void motor_one_encoder_isr(void) {
@@ -103,9 +97,6 @@ long encoder(const int motor) {
 
 /******** I2C Helper Functions ********/
 void receive(void) {
-  // Set the offset, this will always be the first byte.
-  offset = Wire.read();
-  // If there is information after the offset, it is telling us more about the command.
   msgLength = 0;
   while (Wire.available()) {
     instruction[msgLength] = Wire.read();
@@ -114,13 +105,9 @@ void receive(void) {
   }
 }
 
-// function to request info from I2C
+// function to respond to request for info from I2C
 void request(void) {
-  // According to the Wire source code, we must call write() within therequesting ISR
-  // and nowhere else. Otherwise, the timing does not work out. See line238:
-  // https://github.com/arduino/ArduinoCore-avr/blob/master/libraries/Wire/src/Wire.cpp
   msgLength = 0;
-  
   Wire.write(reply[msgLength]); 
 }
 
@@ -149,7 +136,6 @@ void turn(const float angle) {
       // get motor counts
       motor_counts[0] = encoder(1);
       motor_counts[1] = encoder(2);
-
       count_diff = abs(motor_counts[1]) - abs(motor_counts[0]);
       combined_count_diff = count_diff - last_count_diff;
       last_count_diff = count_diff;
@@ -164,7 +150,6 @@ void turn(const float angle) {
         motor_two_max_voltage[0] = 4.5;
         motor_two_max_voltage[1] = -4.5;
       }
-      
       // get position traveled
       theta[0] = 2 * PI * (float)motor_counts[0] / 3200;
       theta[1] = 2 * PI * (float)motor_counts[1] / 3200;
@@ -177,14 +162,12 @@ void turn(const float angle) {
       // actual velocities calculated
       rho_dot_actual = RADIUS * (theta_dot[0] + theta_dot[1]) / 2;
       phi_dot_actual = RADIUS * (theta_dot[0] - theta_dot[1]) / WHEEL_DISTANCE;
-
       // angle position & velocity controller - PI -> P -> V_delta
       pos_error[0] = phi_desired - phi_actual;
       integral_error[0] = 0.5 * (integral_error[0] + pos_error[0]) * ((float)DESIRED_TIME_US / 1000000);
       phi_dot_desired = KP_PHI * pos_error[0] + KI_PHI * integral_error[0];
       error[0] = phi_dot_desired - phi_dot_actual;
       V_delta = error[0] * KP_PHI_POS;
-
       // distance position & velocity controller - PI -> P -> V_bar
       pos_error[1] = rho_desired - rho_actual;
       integral_error[1] = 0.5 * (integral_error[1] + pos_error[1]) * ((float)DESIRED_TIME_US / 1000000);
@@ -194,7 +177,6 @@ void turn(const float angle) {
       // calculate voltage
       voltage[0] = (V_bar + V_delta) / 2;
       voltage[1] = (V_bar - V_delta) / 2;
-
       //setting max voltages
       if (voltage[0] < 0) {
         voltage[0] = max(voltage[0], motor_one_max_voltage[1]);
@@ -238,7 +220,7 @@ void forward(const float distance) {
   rho_desired = distance;
   while (true) {
     current_time_ms = (float)(last_time_us - start_time_us) / 1000;
-    if (abs(rho_desired) - abs(rho_actual) < 0.5) {
+    if (abs(rho_desired) - abs(rho_actual) < 0.25) {
       break;
     } else {
       // get motor counts
@@ -332,120 +314,130 @@ void go_in_circle(void) {
   reset();
   while (true) {
     current_time_ms = (float)(last_time_us - start_time_us) / 1000;
-    // get motor counts
-    motor_counts[0] = encoder(1);
-    motor_counts[1] = encoder(2);
-
-    count_diff = abs(motor_counts[1]) - abs(motor_counts[0]);
-    combined_count_diff = count_diff - last_count_diff;
-    last_count_diff = count_diff;
-    if (combined_count_diff > 0) { // if motor 2 going faster
-      motor_one_max_voltage[0] = 5;
-      motor_one_max_voltage[1] = -5;
-      motor_two_max_voltage[0] = 1.75;
-      motor_two_max_voltage[1] = -1.75;
-    } else { // if motor 1 is going faster
-      motor_one_max_voltage[0] = 2;
-      motor_one_max_voltage[1] = -2;
-      motor_two_max_voltage[0] = 4.5;
-      motor_two_max_voltage[1] = -4.5;
-    }
-    
-    // get position traveled
-    theta[0] = 2 * PI * (float)motor_counts[0] / 3200;
-    theta[1] = 2 * PI * (float)motor_counts[1] / 3200;
-    // calculate velocity of each motor
-    theta_dot[0] = (theta[0] - last_theta[0]) / ((float)DESIRED_TIME_US / 1000000);
-    theta_dot[1] = (theta[1] - last_theta[1]) / ((float)DESIRED_TIME_US / 1000000);
-    // actual positions and angles calculated
-    rho_actual = RADIUS * (theta[0] + theta[1]) / 2;
-    phi_actual = RADIUS * (theta[0] - theta[1]) / WHEEL_DISTANCE;
-    // actual velocities calculated
-    rho_dot_actual = RADIUS * (theta_dot[0] + theta_dot[1]) / 2;
-    phi_dot_actual = RADIUS * (theta_dot[0] - theta_dot[1]) / WHEEL_DISTANCE;
-
-    if (phi_actual <= 1.8*PI) {
-      phi_dot_desired = 1 / PI;
-      rho_dot_desired = 1;
-    } else {
-      break;
-    }
-
-    Serial.print(theta[0]);
-    Serial.print("\t");
-    Serial.print(theta[1]);
-    Serial.print("\t");
-    Serial.print(rho_actual);
-    Serial.print("\t");
-    Serial.println(phi_actual);
-
-    // voltage calculations
-    error[0] = phi_dot_desired - phi_dot_actual;
-    V_delta = error[0] * KP_PHI_POS;
-    error[1] = rho_dot_desired - rho_dot_actual;
-    V_bar = error[1] * KP_RHO_POS;
-
-    // calculate voltage
-    voltage[0] = (V_bar + V_delta) / 2;
-    voltage[1] = (V_bar - V_delta) / 2;
-    voltage[0] = abs(voltage[0]);
-    voltage[1] = abs(voltage[1]) / 2;
-
-    //setting max voltages
-    if (voltage[0] < 0) {
-      voltage[0] = max(voltage[0], motor_one_max_voltage[1]);
-    } else {
-      voltage[0] = min(voltage[0], motor_one_max_voltage[0]);
-    }
-    if (voltage[1] < 0) {
-      voltage[1] = max(voltage[1], motor_two_max_voltage[1]);
-    } else {
-      voltage[1] = min(voltage[1], motor_two_max_voltage[0]);
-    }
-    // calculate PWM
-    pwm[0] = 255 * abs(voltage[0]) / BATTERY_VOLTAGE;
-    pwm[1] = 255 * abs(voltage[1]) / BATTERY_VOLTAGE;
-    // set motor direction
-    if (voltage[0] > 0) {
-      digitalWrite(M1DIR, LOW);
-    } else {
-      digitalWrite(M1DIR, HIGH);
-    }
-    if (voltage[1] > 0) {
-      digitalWrite(M2DIR, HIGH);
-    } else {
-      digitalWrite(M2DIR, LOW);
-    }
-    // write power to motors
-    if (phi_actual <= 1.8*PI) {  
-      analogWrite(M1PWR, min(pwm[0], 255));
-      analogWrite(M2PWR, min(pwm[1], 255));
-    }
-    // sample time and previous runs variable assignment
-    while (micros() < last_time_us + DESIRED_TIME_US);
-    last_time_us = micros();
-    last_theta[0] = theta[0];
-    last_theta[1] = theta[1];
-  }
-}
-
-// request 0 for angle, 1 for distance
-
-// function to search for marker
-void search_for_marker(void) {
-  while (true) {
     if (msgLength > 0) {
       if (instruction[0] == 50) {
-        reply[0] = 0;
-        instruction[0] = 75;
-        msgLength = 1;
+        msgLength = 0;
         break;
       }
     } else {
-      // turn 40 degrees left and wait 2 seconds before continuing
-      turn(40);
+      // get motor counts
+      motor_counts[0] = encoder(1);
+      motor_counts[1] = encoder(2);
+      // motor voltage controller
+      count_diff = abs(motor_counts[1]) - abs(motor_counts[0]);
+      combined_count_diff = count_diff - last_count_diff;
+      last_count_diff = count_diff;
+      if (combined_count_diff > 0) { // if motor 2 going faster
+        motor_one_max_voltage[0] = 5;
+        motor_one_max_voltage[1] = -5;
+        motor_two_max_voltage[0] = 1.75;
+        motor_two_max_voltage[1] = -1.75;
+      } else { // if motor 1 is going faster
+        motor_one_max_voltage[0] = 2;
+        motor_one_max_voltage[1] = -2;
+        motor_two_max_voltage[0] = 4.5;
+        motor_two_max_voltage[1] = -4.5;
+      }
+      // get position traveled
+      theta[0] = 2 * PI * (float)motor_counts[0] / 3200;
+      theta[1] = 2 * PI * (float)motor_counts[1] / 3200;
+      // calculate velocity of each motor
+      theta_dot[0] = (theta[0] - last_theta[0]) / ((float)DESIRED_TIME_US / 1000000);
+      theta_dot[1] = (theta[1] - last_theta[1]) / ((float)DESIRED_TIME_US / 1000000);
+      // actual positions and angles calculated
+      rho_actual = RADIUS * (theta[0] + theta[1]) / 2;
+      phi_actual = RADIUS * (theta[0] - theta[1]) / WHEEL_DISTANCE;
+      // actual velocities calculated
+      rho_dot_actual = RADIUS * (theta_dot[0] + theta_dot[1]) / 2;
+      phi_dot_actual = RADIUS * (theta_dot[0] - theta_dot[1]) / WHEEL_DISTANCE;
+      phi_dot_desired = 2 / PI;
+      rho_dot_desired = 2;
+      // voltage calculations
+      error[0] = phi_dot_desired - phi_dot_actual;
+      V_delta = error[0] * KP_PHI_POS;
+      error[1] = rho_dot_desired - rho_dot_actual;
+      V_bar = error[1] * KP_RHO_POS;
+
+      // calculate voltage
+      voltage[0] = (V_bar + V_delta) / 2;
+      voltage[1] = (V_bar - V_delta) / 2;
+      voltage[0] = abs(voltage[0]);
+      voltage[1] = abs(voltage[1]) / 2;
+
+      //setting max voltages
+      if (voltage[0] < 0) {
+        voltage[0] = max(voltage[0], motor_one_max_voltage[1]);
+      } else {
+        voltage[0] = min(voltage[0], motor_one_max_voltage[0]);
+      }
+      if (voltage[1] < 0) {
+        voltage[1] = max(voltage[1], motor_two_max_voltage[1]);
+      } else {
+        voltage[1] = min(voltage[1], motor_two_max_voltage[0]);
+      }
+      // calculate PWM
+      pwm[0] = 255 * abs(voltage[0]) / BATTERY_VOLTAGE;
+      pwm[1] = 255 * abs(voltage[1]) / BATTERY_VOLTAGE;
+      // set motor direction
+      if (voltage[0] > 0) {
+        digitalWrite(M1DIR, LOW);
+      } else {
+        digitalWrite(M1DIR, HIGH);
+      }
+      if (voltage[1] > 0) {
+        digitalWrite(M2DIR, HIGH);
+      } else {
+        digitalWrite(M2DIR, LOW);
+      }
+      // write power to motors 
+      analogWrite(M1PWR, min(pwm[0], 255));
+      analogWrite(M2PWR, min(pwm[1], 255));
+      // sample time and previous runs variable assignment
+      while (micros() < last_time_us + DESIRED_TIME_US);
+      last_time_us = micros();
+      last_theta[0] = theta[0];
+      last_theta[1] = theta[1];
     }
   }
+}
+
+// function to search for aruco marker
+void search_for_marker(void) {
+  while (true) {
+    current_time_ms = (float)(last_time_us - start_time_us) / 1000;
+    if (msgLength > 0) {
+      if (instruction[0] == 50) {
+        msgLength = 0;
+        break;
+      } else if (instruction[0] == 75) {
+        previous_message = 75;
+        msgLength = 0;
+        break;
+      } else if (instruction[0] == 85) {
+        previous_message = 85;
+        msgLength = 0;
+        break;
+      }
+    } else {
+      // finding camera code, every 3 seconds turn 40 degrees more if marker hasn't been found
+      if (current_time_ms - current_time_copy >= 3000) {
+        current_time_copy = current_time_ms;
+        turn(40);
+      }
+    }
+    // NOTE: Might need all the data collection? need to test
+    while (micros() < last_time_us + DESIRED_TIME_US);
+    last_time_us = micros();
+  }
+}
+
+const int commands[4] = {100, 85, 75, 50};
+bool check_data(const int data) {
+  for (int i = 0; i < 4; i++) {
+    if (commands[i] == data) return false;
+    else continue;
+  }
+  return true;
 }
 
 void setup() {
@@ -478,69 +470,59 @@ void loop() {
   // degrees - positive is left
   // I2C reading code
   if (msgLength > 0) {
-    switch(instruction[0]) {
-      case 100: // look for marker
-        search_for_marker();
-        break;
-      case 75: // request angle from pi
+    if (previous_message == 75) {
+      if (check_data(instruction[0])) { // if instruction is command don't run
         reply[0] = 0;
-        Wire.requestFrom(PI_ADDR, 1);
-
-
-    }
-    msgLength = 0;
-  }
-  if (msgLength > 0 && !finished) {
-    if (instruction[0] == 100) {
-      start_turning = true;
-    } else if (instruction[0] == 50) {
-      start_turning = false;
-      reply[0] = 1; // when arduino requests info this is what is sent back
-    } else {
-      reset();
-      marker_found = true;
-      if (instruction[0] > 200) {
-        phi_desired_degrees = (instruction[0] - 256);
-        phi_desired = phi_desired_degrees * PI / 180;
+        turn(instruction[0]);
+        reply[0] = 2; // finished turn
+        previous_message = 0;
       } else {
-        phi_desired_degrees = instruction[0];
-        phi_desired = phi_desired_degrees * PI / 180;
+        previous_message = 0;
+        reply[0] = 1;
+      }
+    } else if (previous_message == 85) {
+      if (check_data(instruction[0])) { // if instruction is command don't run
+        reply[0] = 0; // tell PI we are busy
+        forward(instruction[0] - 0.25); // get to marker
+        turn(75); // turn away from marker
+        reply[0] = 4; // finished drive - look for next marker while turning
+        go_in_circle(); // go around marker
+        previous_message = 50;
+        reply[0] = -1;
+      } else {
+        previous_message = 0;
+        reply[0] = 2;
+      }
+    } else {
+      switch(instruction[0]) {
+        case 100: // start turning command
+          reply[0] = 0;
+          previous_message = 100;
+          search_for_marker();
+          break;
+        case 85: // distance to travel command
+          reply[0] = 3;
+          previous_message = 85;
+          break;
+        case 75: // angle to turn command
+          reply[0] = 1;
+          previous_message = 75;
+          break;
+        case 50: // stop turning command
+          previous_message = 50;
+          break;
+        default:
+          reply[0] = -1;
+          previous_message = 0;
+          break;
       }
     }
     msgLength = 0;
   }
 
-  // // travel to marker code
-  // if (marker_found && (phi_desired - phi_actual < 0.02) && !finished) {
-  //   if (!reset_done) {
-  //     reset();
-  //   }
-  //   rho_desired = 6.2;
-  //   reset_done = true;
-  // }
-
-  // go around marker code
-  // if (rho_desired > 0 && (rho_desired - rho_actual < 0.5) && !finished) {
-  //   turn(-90);
-  //   go_in_circle();
-  //   while (true) {
-  //     analogWrite(M1PWR, 0);
-  //     analogWrite(M2PWR, 0);
-  //   }
-  //   finished = true;
-  // }
-
-  // finding camera code, every 3 seconds turn 20 degrees more if marker hasn't been found
-  // if (current_time_ms - current_time_copy >= 3000 && !marker_found && start_turning && !finished) {
-  //   phi_desired_degrees += 40;
-  //   current_time_copy = current_time_ms;
-  // }
-  // phi_desired = phi_desired_degrees * PI / 180; // convert from degrees to radians
-
   // get motor counts
   motor_counts[0] = encoder(1);
   motor_counts[1] = encoder(2);
-  
   // get position traveled
   theta[0] = 2 * PI * (float)motor_counts[0] / 3200;
   theta[1] = 2 * PI * (float)motor_counts[1] / 3200;
@@ -553,7 +535,6 @@ void loop() {
   // actual velocities calculated
   rho_dot_actual = RADIUS * (theta_dot[0] + theta_dot[1]) / 2;
   phi_dot_actual = RADIUS * (theta_dot[0] - theta_dot[1]) / WHEEL_DISTANCE;
-
   // sample time and previous runs variable assignment
   while (micros() < last_time_us + DESIRED_TIME_US);
   last_time_us = micros();
