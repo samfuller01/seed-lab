@@ -60,6 +60,7 @@ float desired_velocity_rad_s[2] = {0, 0}; // desired velocity in rad/s
 float actual_velocity_rad_s[2] = {0, 0}; // current velocity in rad/s
 unsigned int pwm[2] = {0, 0}; // PWM applied to motors
 int previous_message = 0;
+bool start_searching = false;
 
 // encoder ISR from assignment 1
 void motor_one_encoder_isr(void) {
@@ -125,17 +126,41 @@ void reset(void) {
 
 // function to make robot turn desired angle in degrees
 void turn(const float angle) {
+  Serial.println("In turn function");
   reset();
   phi_desired_degrees = angle;
   phi_desired = phi_desired_degrees * PI / 180;
   while (true) {
     current_time_ms = (float)(last_time_us - start_time_us) / 1000;
+    if (msgLength > 0) {
+      if (instruction[0] == 50) {
+        msgLength = 0;
+        Serial.println("Got 50 in turning function");
+        start_searching = false;
+        break;
+      } else if (instruction[0] == 75) {
+        msgLength = 0;
+        previous_message = 75;
+        reply[0] = 1;
+        Serial.println("Got 75 in turning function");
+        break;
+      } else if (instruction[0] == 85) {
+        msgLength = 0;
+        previous_message = 85;
+        reply[0] = 3;
+        Serial.println("Got 85 in turning function");
+        break;
+      } else {
+        msgLength = 0;
+      }
+    }
     if (abs(phi_desired) - abs(phi_actual) < 0.5) {
       break;
     } else {
       // get motor counts
       motor_counts[0] = encoder(1);
       motor_counts[1] = encoder(2);
+
       count_diff = abs(motor_counts[1]) - abs(motor_counts[0]);
       combined_count_diff = count_diff - last_count_diff;
       last_count_diff = count_diff;
@@ -150,6 +175,7 @@ void turn(const float angle) {
         motor_two_max_voltage[0] = 4.5;
         motor_two_max_voltage[1] = -4.5;
       }
+      
       // get position traveled
       theta[0] = 2 * PI * (float)motor_counts[0] / 3200;
       theta[1] = 2 * PI * (float)motor_counts[1] / 3200;
@@ -162,12 +188,14 @@ void turn(const float angle) {
       // actual velocities calculated
       rho_dot_actual = RADIUS * (theta_dot[0] + theta_dot[1]) / 2;
       phi_dot_actual = RADIUS * (theta_dot[0] - theta_dot[1]) / WHEEL_DISTANCE;
+
       // angle position & velocity controller - PI -> P -> V_delta
       pos_error[0] = phi_desired - phi_actual;
       integral_error[0] = 0.5 * (integral_error[0] + pos_error[0]) * ((float)DESIRED_TIME_US / 1000000);
       phi_dot_desired = KP_PHI * pos_error[0] + KI_PHI * integral_error[0];
       error[0] = phi_dot_desired - phi_dot_actual;
       V_delta = error[0] * KP_PHI_POS;
+
       // distance position & velocity controller - PI -> P -> V_bar
       pos_error[1] = rho_desired - rho_actual;
       integral_error[1] = 0.5 * (integral_error[1] + pos_error[1]) * ((float)DESIRED_TIME_US / 1000000);
@@ -177,6 +205,7 @@ void turn(const float angle) {
       // calculate voltage
       voltage[0] = (V_bar + V_delta) / 2;
       voltage[1] = (V_bar - V_delta) / 2;
+
       //setting max voltages
       if (voltage[0] < 0) {
         voltage[0] = max(voltage[0], motor_one_max_voltage[1]);
@@ -216,6 +245,7 @@ void turn(const float angle) {
 
 // function to make robot go straight desired distance
 void forward(const float distance) {
+  Serial.println("In forward function");
   reset();
   rho_desired = distance;
   while (true) {
@@ -310,15 +340,17 @@ void forward(const float distance) {
 }
 
 // function to make robot go around marker in circle with radius of 1 foot
-void go_in_circle(void) {
+void circle(void) {
+  Serial.println("In circle function");
   reset();
   while (true) {
     current_time_ms = (float)(last_time_us - start_time_us) / 1000;
     if (msgLength > 0) {
       if (instruction[0] == 50) {
-        msgLength = 0;
+        Serial.println("Got stop command in circle function");
         break;
       }
+      msgLength = 0;
     } else {
       // get motor counts
       motor_counts[0] = encoder(1);
@@ -407,6 +439,7 @@ void search_for_marker(void) {
     current_time_ms = (float)(last_time_us - start_time_us) / 1000;
     if (msgLength > 0) {
       if (instruction[0] == 50) {
+        Serial.println("Got stop command");
         msgLength = 0;
         break;
       } else if (instruction[0] == 75) {
@@ -421,6 +454,7 @@ void search_for_marker(void) {
     } else {
       // finding camera code, every 3 seconds turn 40 degrees more if marker hasn't been found
       if (current_time_ms - current_time_copy >= 3000) {
+        Serial.println("Turning 40 degrees");
         current_time_copy = current_time_ms;
         turn(40);
       }
@@ -472,6 +506,7 @@ void loop() {
   if (msgLength > 0) {
     if (previous_message == 75) {
       if (check_data(instruction[0])) { // if instruction is command don't run
+        Serial.println("Got angle data");
         reply[0] = 0;
         turn(instruction[0]);
         reply[0] = 2; // finished turn
@@ -482,11 +517,12 @@ void loop() {
       }
     } else if (previous_message == 85) {
       if (check_data(instruction[0])) { // if instruction is command don't run
+        Serial.println("Got distance data");
         reply[0] = 0; // tell PI we are busy
         forward(instruction[0] - 0.25); // get to marker
         turn(75); // turn away from marker
         reply[0] = 4; // finished drive - look for next marker while turning
-        go_in_circle(); // go around marker
+        circle(); // go around marker
         previous_message = 50;
         reply[0] = -1;
       } else {
@@ -498,17 +534,24 @@ void loop() {
         case 100: // start turning command
           reply[0] = 0;
           previous_message = 100;
-          search_for_marker();
+          Serial.println("Starting search function");
+          start_searching = true;
+          msgLength = 0;
+          // search_for_marker();
           break;
         case 85: // distance to travel command
           reply[0] = 3;
+          Serial.println("Got distance command");
           previous_message = 85;
           break;
         case 75: // angle to turn command
           reply[0] = 1;
+          Serial.println("Got angle command");
           previous_message = 75;
           break;
         case 50: // stop turning command
+          Serial.println("Got stop command");
+          start_searching = false;
           previous_message = 50;
           break;
         default:
@@ -518,6 +561,12 @@ void loop() {
       }
     }
     msgLength = 0;
+  }
+
+  if (start_searching && (current_time_ms - current_time_copy >= 3000)) {
+    Serial.println("Turning in search iteratively code.");
+    current_time_copy = current_time_ms;
+    turn(40);
   }
 
   // get motor counts
