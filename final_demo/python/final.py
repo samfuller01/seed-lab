@@ -147,7 +147,7 @@ while(True):
         
     #tells arduino the camera is on      
     if peep == 0:
-        #command = 100
+        command = 100
         i2c.write_byte(ARD_ADDR,command)
         command = 0
         peep = 1
