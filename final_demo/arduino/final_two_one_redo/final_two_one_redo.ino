@@ -337,7 +337,7 @@ void loop() {
     }
   }
 
-  // go around marker code
+  // go to marker code
   if (rho_desired > 0 && (rho_desired - rho_actual < 0.5) && !finished) {
     finished = true;
     while (true) {
